@@ -1,0 +1,11 @@
+[package]
+build = "build.rs"
+name = "preload"
+version = "0.1.0"
+authors = ["alexander.linne <alexander.linne@stud.uni-goettingen.de>"]
+edition = "2018"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]

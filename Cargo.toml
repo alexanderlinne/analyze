@@ -1,0 +1,6 @@
+[workspace]
+
+members = [
+    "tracker/preload",
+    "tracker/track",
+]
