@@ -134,11 +134,12 @@ bool test_empty_array_to_json_array() {
 }
 
 bool test_array_to_json_array() {
-    const char *strings[2];
-    strings[0] = "test";
-    strings[1] = NULL;
+    const char *strings[3];
+    strings[0] = "test0";
+    strings[1] = "test1";
+    strings[2] = NULL;
     const char *result = string_array_to_json_list(strings);
-    bool success = strcmp(result, "[\"test\"]") == 0;
+    bool success = strcmp(result, "[\"test0\",\"test1\"]") == 0;
     free((void *)result);
     return success;
 }
