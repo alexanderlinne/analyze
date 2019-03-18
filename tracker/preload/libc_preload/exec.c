@@ -9,9 +9,15 @@ void exit_called(
     int status)
 {
     const char *json = safe_sprintf(
-        "{\"type\":\"libc_call\",\"pid\":%ld,\"ppid\":%ld,\"timestamp\":%zu,"
-        "\"function_name\":\"exit\",\"status\":%d}\n",
-        (long)getpid(), (long)getppid(), microseconds_since_epoch(), status);
+        "{"
+            "\"type\":\"libc_call\","
+            "\"timestamp\":%zu,"
+            "\"data\":{"
+                "\"function_name\":\"exit\","
+                "\"status\":%d"
+            "}"
+        "}",
+        microseconds_since_epoch(), status);
     report_add(tracker_report, json);
     free((void *)json);
 }
@@ -25,9 +31,17 @@ void exec_called(
     const char *argv_json = string_array_to_json_list(argv);
     const char *envp_json = string_array_to_json_list(envp);
     const char *json = safe_sprintf(
-        "{\"type\":\"libc_call\",\"pid\":%ld,\"ppid\":%ld,\"timestamp\":%zu,"
-        "\"function_name\":\"%s\",\"filename\":\"%s\",\"argv\":%s,\"envp\":%s}\n",
-        (long)getpid(), (long)getppid(), microseconds_since_epoch(),
+        "{"
+            "\"type\":\"libc_call\","
+            "\"timestamp\":%zu,"
+            "\"data\":{"
+                "\"function_name\":\"%s\","
+                "\"filename\":\"%s\","
+                "\"argv\":%s,"
+                "\"envp\":%s"
+            "}"
+        "}",
+        microseconds_since_epoch(),
         function_name, filename, argv_json, envp_json);
     report_add(tracker_report, json);
     free((void *)json);

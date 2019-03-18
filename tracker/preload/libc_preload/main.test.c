@@ -13,6 +13,9 @@
 #include "libc.h"
 #include "util.h"
 
+static int _argc;
+static char **_argv;
+
 void set_up()
 {
     init_libc_function_pointers();
@@ -20,14 +23,17 @@ void set_up()
 
 bool test_file_report()
 {
-    file_report_t *report = file_report_create(get_current_dir_name());
+    file_report_t *report = file_report_create(
+        _argc, _argv, get_current_dir_name());
+    report_add((report_t *)report, "test0");
+    report_add((report_t *)report, "test1");
     const char *report_path = file_report_current_filepath(report);
+    file_report_destroy(report);
     FILE *file = NULL;
     char *file_contents = NULL;
+    const char *expected = NULL;
 
     bool success = true;
-    const char *output = "<test_message>";
-    report_add((report_t *)report, output);
     if (access(report_path, F_OK) == -1) {
         success = false;
         goto _exit;
@@ -45,18 +51,29 @@ bool test_file_report()
         goto _exit;
     }
 
-    if (strcmp(file_contents, output) != 0) {
+    expected = safe_sprintf(
+        "{"
+            "\"pid\":%ld,"
+            "\"ppid\":%ld,"
+            "\"argv\":%s,"
+            "\"envp\":%s,"
+            "\"log\":[test0,test1]"
+        "}\n",
+        (long)getpid(), (long)getppid(),
+        string_array_to_json_list((const char * const *)_argv),
+        string_array_to_json_list((const char * const *)environ));
+    if (strcmp(file_contents, expected) != 0) {
         success = false;
         goto _exit;
     }
 
 _exit:
+    if (expected)
+        free((void *)expected);
     if (file_contents)
         free(file_contents);
     if (file)
         fclose(file);
-    file_report_destroy(report);
-    remove(report_path);
     free((void *)report_path);
     return success;
 }
@@ -170,8 +187,10 @@ bool test_array_to_json_array_escape() {
         printf(" ... ok\n"); \
     }
 
-int main()
+int main(int argc, char **argv)
 {
+    _argc = argc;
+    _argv = argv;
     set_up();
     bool success = true;
     TEST(test_file_report())
