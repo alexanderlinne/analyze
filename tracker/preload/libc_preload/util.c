@@ -106,6 +106,9 @@ const char *string_to_json_value(const char *str)
         if (str[i] == '"' || str[i] == '\\') {
             escape_count++;
         }
+        if (!isprint(str[i])) {
+            escape_count += 5;
+        }
     }
 
     char *result = malloc(input_length + escape_count + 3);
@@ -115,10 +118,16 @@ const char *string_to_json_value(const char *str)
         if (str[i] == '"' || str[i] == '\\') {
             result[write_position++] = '\\';
         }
-        result[write_position++] = str[i];
+        if (!isprint(str[i])) {
+            sprintf(&result[write_position], "\\u%04X", str[i]);
+            write_position += 6;
+        } else {
+            result[write_position++] = str[i];
+        }
     }
     result[write_position++] = '"';
     result[write_position++] = '\0';
+    assert(write_position == input_length + escape_count + 3);
     return result;
 }
 

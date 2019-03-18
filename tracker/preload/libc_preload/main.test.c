@@ -124,6 +124,13 @@ bool test_string_to_json_value_escape_backslash() {
     return success;
 }
 
+bool test_string_to_json_value_escape_control_characters() {
+    const char *result = string_to_json_value("\x07");
+    bool success = strcmp(result, "\"\\u0007\"") == 0;
+    free((void *)result);
+    return success;
+}
+
 bool test_empty_array_to_json_array() {
     const char *strings[1];
     strings[0] = NULL;
@@ -177,6 +184,7 @@ int main()
     TEST(test_simple_string_to_json_value())
     TEST(test_string_to_json_value_escape_quotes())
     TEST(test_string_to_json_value_escape_backslash())
+    TEST(test_string_to_json_value_escape_control_characters())
     TEST(test_empty_array_to_json_array())
     TEST(test_array_to_json_array())
     TEST(test_array_to_json_array_escape())
