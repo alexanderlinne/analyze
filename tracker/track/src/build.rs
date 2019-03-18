@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap};
 use std::env;
 use std::fs;
 use std::process::{Command, Stdio};
@@ -30,6 +31,7 @@ impl Build {
     pub fn new(command: &str, processes: Vec<Process>)
         -> Result<Build>
     {
+        Build::verify_integrity(&processes)?;
         Ok(Build {
             command: command.to_string(),
             processes: processes,
@@ -85,5 +87,97 @@ impl Build {
         } else {
             Ok(Build::collect_processes(temp_directory.to_str().unwrap())?)
         }
+    }
+
+    /**
+     * Checks that the pids and ppids of all processes form a single connected
+     * component and no pid is duplicate.
+     */
+    fn verify_integrity(processes: &Vec<Process>)
+        -> Result<()>
+    {
+        let pids : Vec<usize> = processes.iter()
+            .map(|process| process.pid)
+            .collect();
+        let unique_pids : HashMap<usize, ()> = pids.iter()
+            .map(|pid| (*pid, ()))
+            .collect();
+        if pids.len() != unique_pids.len() {
+            return Err(Error::from_kind(ErrorKind::Msg(
+                "Duplicate pid found!".to_string())));
+        }
+        let parentless_count = processes.iter()
+            .map(|process| process.ppid)
+            .map(|ppid| if pids.contains(&ppid) { 0 } else { 1 })
+            .fold(0, |a, b| a + b);
+        if parentless_count > 1 {
+            return Err(Error::from_kind(ErrorKind::Msg(
+                "Multiple connected components found! \
+                Possibly the data for a process is missing!".to_string())));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn create_dummy_process(pid: usize, ppid: usize)
+        -> Process
+    {
+        Process {
+            pid: pid,
+            ppid: ppid,
+            argv: vec![],
+            log: vec![],
+        }
+    }
+
+    #[test]
+    fn test_build_integrity_empty_vec() {
+        let processes = vec![];
+        assert!(Build::new("", processes).is_ok());
+    }
+
+    #[test]
+    fn test_build_integriy_single_process() {
+        let processes = vec![
+            create_dummy_process(1, 0),
+        ];
+        assert!(Build::new("", processes).is_ok());
+    }
+
+    #[test]
+    fn test_build_integrity_success() {
+        let processes = vec![
+            create_dummy_process(1, 0),
+            create_dummy_process(2, 1),
+            create_dummy_process(3, 1),
+            create_dummy_process(4, 2),
+        ];
+        assert!(Build::new("", processes).is_ok());
+    }
+
+    #[test]
+    fn test_build_integrity_multiple_connected_components_failure() {
+        let processes = vec![
+            create_dummy_process(1, 0),
+            create_dummy_process(2, 1),
+            create_dummy_process(3, 1),
+            create_dummy_process(5, 4),
+        ];
+        assert!(Build::new("", processes).is_err());
+    }
+
+    #[test]
+    fn test_build_integrity_duplicate_pid() {
+        let processes = vec![
+            create_dummy_process(1, 0),
+            create_dummy_process(2, 1),
+            create_dummy_process(3, 1),
+            create_dummy_process(1, 3),
+        ];
+        assert!(Build::new("", processes).is_err());
     }
 }
