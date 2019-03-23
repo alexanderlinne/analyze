@@ -106,6 +106,9 @@ const char *string_to_json_value(const char *str)
         if (str[i] == '"' || str[i] == '\\') {
             escape_count++;
         }
+        if (!isprint(str[i])) {
+            escape_count += 5;
+        }
     }
 
     char *result = malloc(input_length + escape_count + 3);
@@ -115,10 +118,49 @@ const char *string_to_json_value(const char *str)
         if (str[i] == '"' || str[i] == '\\') {
             result[write_position++] = '\\';
         }
-        result[write_position++] = str[i];
+        if (!isprint(str[i])) {
+            sprintf(&result[write_position], "\\u%04X", str[i]);
+            write_position += 6;
+        } else {
+            result[write_position++] = str[i];
+        }
     }
     result[write_position++] = '"';
     result[write_position++] = '\0';
+    assert(write_position == input_length + escape_count + 3);
+    return result;
+}
+
+const char *json_value_array_to_json_list(const char * const *arr) {
+    size_t count = 0;
+    for (size_t i = 0; arr[i] != NULL; ++i) {
+        count++;
+    }
+
+    size_t result_length = 0;
+    for (size_t i = 0; arr[i] != NULL; ++i) {
+        result_length += strlen(arr[i]);
+    }
+
+    // list seperators (count - 1)
+    // + '[' + ']' + '\0'
+    result_length += (count == 0 ? 0 : count - 1) + 3;
+
+    char *result = malloc(result_length);
+
+    result[0] = '[';
+    size_t write_position = 1;
+    for (size_t i = 0; arr[i] != NULL; ++i) {
+        size_t length = strlen(arr[i]);
+        memcpy(&result[write_position], arr[i], length);
+        write_position += length;
+        if (arr[i + 1]) {
+            result[write_position++] = ',';
+        }
+    }
+    result[write_position++] = ']';
+    result[write_position++] = '\0';
+
     return result;
 }
 
@@ -135,29 +177,7 @@ const char *string_array_to_json_list(const char * const *arr)
     }
     json_values[count] = NULL;
 
-    size_t result_length = 0;
-    for (size_t i = 0; json_values[i] != NULL; ++i) {
-        result_length += strlen(json_values[i]);
-    }
-
-    // list seperators (count - 1)
-    // + '[' + ']' + '\0'
-    result_length += (count == 0 ? 0 : count - 1) + 3;
-
-    char *result = malloc(result_length);
-
-    result[0] = '[';
-    size_t write_position = 1;
-    for (size_t i = 0; json_values[i] != NULL; ++i) {
-        size_t length = strlen(json_values[i]);
-        memcpy(&result[write_position], json_values[i], length);
-        write_position += length;
-        if (json_values[i + 1]) {
-            result[write_position++] = ',';
-        }
-    }
-    result[write_position++] = ']';
-    result[write_position++] = '\0';
+    const char *result = json_value_array_to_json_list(json_values);
 
     for (size_t i = 0; json_values[i] != NULL; ++i) {
         free((void *)json_values[i]);
