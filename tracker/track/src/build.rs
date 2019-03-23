@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
 use std::env;
 use std::fs;
+use std::path::{Path};
 use std::process::{Command, Stdio};
 
 #[derive(Serialize, Deserialize)]
@@ -67,11 +68,14 @@ impl Build {
     {
         let temp_directory = fs::canonicalize(temp_directory)
             .chain_err(|| format!("Failed to canonicalize path \"{}\"!", temp_directory))?;
-        let current_dir = env::current_dir()
-            .chain_err(|| "Failed to get the current working directory!")?;
-        let working_dir = current_dir.join("libpreload.so");
+        let arg = env::args().next();
+        let preload_lib = arg.as_ref()
+            .map(Path::new)
+            .and_then(Path::parent)
+            .map(|p| p.join("libpreload.so"))
+            .ok_or(Error::from_kind(ErrorKind::Msg("Failed to create preload path!".to_string())))?;
         let output = Command::new("/bin/bash")
-            .env("LD_PRELOAD", working_dir)
+            .env("LD_PRELOAD", preload_lib)
             .env("TRACKER_OUTPUT_PATH", &temp_directory)
             .args(&["-c", command])
             .stdout(Stdio::inherit())
