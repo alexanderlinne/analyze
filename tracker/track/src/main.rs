@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate error_chain;
 
+use analyze::build;
 use std::fs;
 use std::path::{PathBuf};
 use structopt::StructOpt;
@@ -9,7 +10,6 @@ pub mod error {
     error_chain!{}
 }
 
-pub mod build;
 mod util;
 
 use crate::error::*;

@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "analyze",
     "tracker/preload",
     "tracker/track",
 ]
