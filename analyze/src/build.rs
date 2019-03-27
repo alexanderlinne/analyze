@@ -1,15 +1,52 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
 use std::env;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
-use std::path::{Path};
 use std::process::{Command, Stdio};
+use libc;
 
 #[derive(Serialize, Deserialize)]
-pub struct LogEntry {
-    pub r#type: String,
+pub struct LibcExec {
+    function_name: String,
+    filename: String,
+    argv: Vec<String>,
+    envp: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LibcExit {
+    function_name: String,
+    status: usize,
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum EventData {
+    LdPreloadLoaded(),
+    LdPreloadUnloaded(),
+    LibcExec(LibcExec),
+    LibcExit(LibcExit),
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Event {
+    pub tid: usize,
     pub timestamp: usize,
-    pub data: serde_json::Value,
+    pub data: EventData,
+}
+
+impl Event {
+    pub fn from(data: EventData) -> Event {
+        let since_the_epoch = SystemTime::now().duration_since(UNIX_EPOCH)
+            .expect("SystemTime::now() returned a time point earlier than UNIX_EPOCH!");
+        let timestamp = since_the_epoch.as_secs() as usize * 1_000_000 +
+            since_the_epoch.subsec_nanos() as usize / 1_000;
+        Event {
+            tid: unsafe { libc::syscall(libc::SYS_gettid) } as usize,
+            timestamp,
+            data,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -17,7 +54,9 @@ pub struct Process {
     pub pid: usize,
     pub ppid: usize,
     pub argv: Vec<String>,
-    pub log: Vec<LogEntry>,
+    pub envp: Vec<String>,
+    pub working_dir: String,
+    pub events: Vec<Event>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -68,10 +107,8 @@ impl Build {
     {
         let temp_directory = fs::canonicalize(temp_directory)
             .chain_err(|| format!("Failed to canonicalize path \"{}\"!", temp_directory))?;
-        let arg = env::args().next();
-        let preload_lib = arg.as_ref()
-            .map(Path::new)
-            .and_then(Path::parent)
+        let arg = fs::canonicalize(env::args().next().unwrap()).chain_err(|| "")?;
+        let preload_lib = arg.parent()
             .map(|p| p.join("libpreload.so"))
             .ok_or(Error::from_kind(ErrorKind::Msg("Failed to create preload path!".to_string())))?;
         let output = Command::new("/bin/bash")
@@ -134,7 +171,9 @@ mod test {
             pid: pid,
             ppid: ppid,
             argv: vec![],
-            log: vec![],
+            envp: vec![],
+            working_dir: String::from(""),
+            events: vec![],
         }
     }
 
