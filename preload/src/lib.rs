@@ -1,4 +1,4 @@
-use analyze::build::{Event, EventData, Process};
+use analyze_base::build::{Event, EventData, Process};
 use libc::{c_char, c_int};
 use std::env;
 use std::ffi::{CStr};

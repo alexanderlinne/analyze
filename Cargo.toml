@@ -2,6 +2,6 @@
 
 members = [
     "analyze",
-    "tracker/preload",
-    "tracker/track",
+    "analyze_base",
+    "preload",
 ]

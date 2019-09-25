@@ -1,9 +1,11 @@
+use failure::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
 use std::env;
+use std::path::{Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use libc;
 
 #[derive(Serialize, Deserialize)]
@@ -65,11 +67,27 @@ pub struct Build {
     pub processes: Vec<Process>,
 }
 
-use super::error::*;
+#[derive(Debug, Fail)]
+enum BuildExecutionError {
+    #[fail(display = "build exited with status: {}", code)]
+    BuildExitedWithCode {
+        code: i32,
+    },
+    #[fail(display = "build exited due to a signal")]
+    BuildExitedWithSignal,
+    #[fail(display = "directory '{}' has no parent directory", directory)]
+    NoParentDirectory {
+        directory: String,
+    },
+    #[fail(display = "recorded data contains duplicated pid")]
+    DuplicatePid,
+    #[fail(display = "a process is missing from the recorded data")]
+    MissingProcess,
+}
 
 impl Build {
     pub fn new(command: &str, processes: Vec<Process>)
-        -> Result<Build>
+        -> Result<Build, Error>
     {
         Build::verify_integrity(&processes)?;
         Ok(Build {
@@ -78,64 +96,64 @@ impl Build {
         })
     }
 
-    pub fn from_command(command: &str, temp_directory: &str)
-        -> Result<Build>
+    pub fn from_command(command: &str, tempdir: &Path)
+        -> Result<Build, Error>
     {
-        let processes = Build::execute_command(command, temp_directory)?;
+        let processes = Build::execute_command(command, tempdir)?;
         Build::new(command, processes)
     }
 
+    fn execute_command(command: &str, tempdir: &Path)
+        -> Result<Vec<Process>, Error>
+    {
+        let status = Build::execute_with_tracker(command, &tempdir)?;
+        if !status.success() {
+            if let Some(code) = status.code() {
+                Err(BuildExecutionError::BuildExitedWithCode { code })?
+            } else {
+                Err(BuildExecutionError::BuildExitedWithSignal)?
+            }
+        } else {
+            Ok(Build::collect_processes(tempdir.to_str().unwrap())?)
+        }
+    }
+
+    fn execute_with_tracker(command: &str, tempdir: &Path)
+        -> Result<ExitStatus, Error>
+    {
+        let executable_dir = fs::canonicalize(env::current_exe()?)?;
+        let preload_lib = executable_dir.parent()
+            .map(|p| p.join("libpreload.so"))
+            .ok_or(BuildExecutionError::NoParentDirectory {
+                directory: executable_dir.into_os_string().into_string().unwrap()
+            })?;
+        Ok(Command::new("/bin/bash")
+            .env("LD_PRELOAD", preload_lib)
+            .env("TRACKER_OUTPUT_PATH", &tempdir)
+            .args(&["-c", command])
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .expect("Build command could not be executed")
+            .status)
+    }
+
     fn collect_processes(directory: &str)
-        -> Result<Vec<Process>>
+        -> Result<Vec<Process>, Error>
     {
         let mut processes = vec![];
-        let dir_iter = fs::read_dir(directory)
-            .chain_err(|| format!("Could not open directory \"{}\"!", directory))?;
+        let dir_iter = fs::read_dir(directory)?;
         for entry in dir_iter {
-            let entry = entry.chain_err(|| format!{"Iterating directory \"{}\" failed!", directory})?;
-            let contents = fs::read_to_string(entry.path())
-                .chain_err(|| format!("Could not read file \"{}\"!", entry.path().to_str().unwrap()))?;
-            let contents : Process = serde_json::from_str(&contents)
-                .chain_err(|| format!("Could not parse JSON value \"{}\"!", contents))?;
+            let contents : Process = serde_json::from_str(
+                &fs::read_to_string(entry?.path())?)?;
             processes.push(contents);
         }
         Ok(processes)
     }
 
-    fn execute_command(command: &str, temp_directory: &str)
-        -> Result<Vec<Process>>
-    {
-        let temp_directory = fs::canonicalize(temp_directory)
-            .chain_err(|| format!("Failed to canonicalize path \"{}\"!", temp_directory))?;
-        let arg = fs::canonicalize(env::args().next().unwrap()).chain_err(|| "")?;
-        let preload_lib = arg.parent()
-            .map(|p| p.join("libpreload.so"))
-            .ok_or(Error::from_kind(ErrorKind::Msg("Failed to create preload path!".to_string())))?;
-        let output = Command::new("/bin/bash")
-            .env("LD_PRELOAD", preload_lib)
-            .env("TRACKER_OUTPUT_PATH", &temp_directory)
-            .args(&["-c", command])
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .expect("Build command could not be executed");
-        if !output.status.success() {
-            if let Some(code) = output.status.code() {
-                Err(Error::from_kind(ErrorKind::Msg(format!("Build exited with status \"{}\"!", code))))
-            } else {
-                Err(Error::from_kind(ErrorKind::Msg("Build exited due to signal!".to_string())))
-            }
-        } else {
-            Ok(Build::collect_processes(temp_directory.to_str().unwrap())?)
-        }
-    }
 
-    /**
-     * Checks that the pids and ppids of all processes form a single connected
-     * component and no pid is duplicate.
-     */
     fn verify_integrity(processes: &Vec<Process>)
-        -> Result<()>
+        -> Result<(), Error>
     {
         let pids : Vec<usize> = processes.iter()
             .map(|process| process.pid)
@@ -144,17 +162,14 @@ impl Build {
             .map(|pid| (*pid, ()))
             .collect();
         if pids.len() != unique_pids.len() {
-            return Err(Error::from_kind(ErrorKind::Msg(
-                "Duplicate pid found!".to_string())));
+            return Err(BuildExecutionError::DuplicatePid)?;
         }
         let parentless_count = processes.iter()
             .map(|process| process.ppid)
             .map(|ppid| if pids.contains(&ppid) { 0 } else { 1 })
             .fold(0, |a, b| a + b);
         if parentless_count > 1 {
-            return Err(Error::from_kind(ErrorKind::Msg(
-                "Multiple connected components found! \
-                Possibly the data for a process is missing!".to_string())));
+            return Err(BuildExecutionError::MissingProcess)?;
         }
         Ok(())
     }

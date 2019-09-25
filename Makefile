@@ -1,10 +1,9 @@
-CRATES := analyze preload track
+CRATES := analyze analyze_base preload
 SOURCE_DIRS := $(foreach crate,$(CRATES),$(shell find . -type d -wholename "*$(crate)/src"))
 SOURCE_DIR_PATTERNS := $(shell echo $(SOURCE_DIRS) | sed -e 's/ /,/g' | sed -e 's/\.\///g')
 
 all:
-	cargo rustc -p preload -- -C link-arg=-Wl,--version-script=ld.version
-	cargo build --all --exclude preload
+	cargo build
 
 test:
 	cargo test

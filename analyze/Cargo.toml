@@ -5,8 +5,10 @@ authors = ["alexander.linne <alexander.linne@stud.uni-goettingen.de>"]
 edition = "2018"
 
 [dependencies]
-error-chain = "0.12.0"
-libc = "0.2"
+analyze_base = { path = "../analyze_base" }
+clap = {version = "~2.32.0", features = ["yaml"]}
+failure = "0.1.5"
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
-
+structopt = "0.2"
+tempfile = "3"

@@ -1,18 +1,10 @@
-#[macro_use]
-extern crate error_chain;
+extern crate failure;
 
-use analyze::build;
+use analyze_base::build;
+use failure::Error;
 use std::fs;
-use std::path::{PathBuf};
 use structopt::StructOpt;
-
-pub mod error {
-    error_chain!{}
-}
-
-mod util;
-
-use crate::error::*;
+use tempfile::tempdir;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "track", version = "0.1.0")]
@@ -20,26 +12,21 @@ struct Config {
     #[structopt(short = "o", long = "output", default_value = "build.json")]
     output_filepath: String,
 
-    #[structopt(short = "t", long = "tempdir", default_value = ".build_info")]
-    temp_directory: String,
-
     #[structopt(short = "b", long = "build", required = true)]
     build_command: String
 }
 
 fn run(config: &Config)
-    -> Result<()>
+    -> Result<(), Error>
 {
-    let _temp_directory = util::TemporaryDirectory::create(
-        PathBuf::from(&config.temp_directory));
+    let dir = tempdir().unwrap();
     let build = build::Build::from_command(
         config.build_command.as_str(),
-        config.temp_directory.as_str())
-        .chain_err(|| "Tracking of the build process resulted in incosistent data!")?;
+        dir.path())?;
     let contents = serde_json::to_string_pretty(&build)
         .expect("JSON serialization failed unexpectedly!");
-    fs::write(&config.output_filepath, contents.as_bytes())
-        .chain_err(|| format!("Failed to write to file \"{}\"!", config.output_filepath))?;
+    fs::write(&config.output_filepath, contents.as_bytes())?;
+    dir.close().unwrap();
     Ok(())
 }
 
@@ -50,13 +37,11 @@ fn main()
         println!("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
         println!("Failed to track build:");
         println!("error: {}", e);
-        for e in e.iter().skip(1) {
+        for e in e.iter_causes() {
             println!("caused by: {}", e);
         }
 
-        if let Some(backtrace) = e.backtrace() {
-            println!("backtrace: {:?}", backtrace);
-        }
+        println!("backtrace: {:?}", e.backtrace());
 
         std::process::exit(1);
     }
