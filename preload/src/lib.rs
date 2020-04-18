@@ -1,10 +1,10 @@
 use analyze_base::build::{Event, EventData, Process};
 use libc::{c_char, c_int};
 use std::env;
-use std::ffi::{CStr};
+use std::ffi::CStr;
 use std::fs;
 use std::slice;
-use std::sync::{Mutex};
+use std::sync::Mutex;
 
 struct Logfile {
     mutex: Mutex<()>,
@@ -20,11 +20,18 @@ impl Logfile {
             process: Process {
                 pid: unsafe { libc::getpid() } as usize,
                 ppid: unsafe { libc::getppid() } as usize,
-                argv: argv.iter().map(|arg| unsafe { CStr::from_ptr(*arg) }.to_string_lossy().to_string()).collect(),
+                argv: argv
+                    .iter()
+                    .map(|arg| {
+                        unsafe { CStr::from_ptr(*arg) }
+                            .to_string_lossy()
+                            .to_string()
+                    })
+                    .collect(),
                 envp: env::vars().map(|(k, v)| format!("{}={}", k, v)).collect(),
                 working_dir: env::current_dir().unwrap().to_string_lossy().to_string(),
                 events: vec![],
-            }
+            },
         }
     }
 
@@ -37,10 +44,9 @@ impl Logfile {
 impl Drop for Logfile {
     fn drop(&mut self) {
         let filepath = format!("{}/{}.json", self.output_path, self.process.pid);
-        let contents = serde_json::to_string(&self.process)
-            .expect("JSON serialization failed unexpectedly!");
-        fs::write(filepath, contents.as_bytes())
-            .expect("Couldn't write logfile!");
+        let contents =
+            serde_json::to_string(&self.process).expect("JSON serialization failed unexpectedly!");
+        fs::write(filepath, contents.as_bytes()).expect("Couldn't write logfile!");
     }
 }
 
@@ -60,7 +66,7 @@ extern "C" fn constructor(argc: c_int, argv: *const *const c_char) {
             let argv = slice::from_raw_parts(argv, argc as usize);
             LOGFILE = Box::into_raw(Box::new(Logfile::new(argv, var.as_str())))
         },
-        Err(_) => ()
+        Err(_) => (),
     };
     add_event(Event::from(EventData::LdPreloadLoaded()));
 }
@@ -71,10 +77,11 @@ extern "C" fn destructor() {
     add_event(Event::from(EventData::LdPreloadUnloaded()));
     if unsafe { LOGFILE } != std::ptr::null_mut() {
         let _ = unsafe { Box::from_raw(LOGFILE) };
-        unsafe { LOGFILE = std::ptr::null_mut(); }
+        unsafe {
+            LOGFILE = std::ptr::null_mut();
+        }
     }
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

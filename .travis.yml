@@ -5,7 +5,7 @@ cache:
   apt: true
   cargo: true
 rust:
-  - stable
+  - nightly
 addons:
   apt:
     packages:
@@ -13,9 +13,12 @@ addons:
       - libelf-dev
       - libdw-dev
 
+before_script:
+  - rustup component add rustfmt --toolchain nightly
 script:
   - make
   - cargo test --verbose --all
+  - cargo +nightly fmt -- --check
 after_success: |
   wget https://github.com/SimonKagstrom/kcov/archive/master.tar.gz &&
   tar xzf master.tar.gz && mkdir kcov-master/build && cd kcov-master/build &&

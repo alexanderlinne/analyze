@@ -1,13 +1,13 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap};
-use std::env;
-use std::path::{Path};
-use std::time::{SystemTime, UNIX_EPOCH};
-use std::fs;
-use std::process::{Command, ExitStatus, Stdio};
-use thiserror::Error;
 use libc;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::process::{Command, ExitStatus, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
+use thiserror::Error;
 
 #[derive(Serialize, Deserialize)]
 pub struct LibcExec {
@@ -40,10 +40,11 @@ pub struct Event {
 
 impl Event {
     pub fn from(data: EventData) -> Event {
-        let since_the_epoch = SystemTime::now().duration_since(UNIX_EPOCH)
+        let since_the_epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .expect("SystemTime::now() returned a time point earlier than UNIX_EPOCH!");
-        let timestamp = since_the_epoch.as_secs() as usize * 1_000_000 +
-            since_the_epoch.subsec_nanos() as usize / 1_000;
+        let timestamp = since_the_epoch.as_secs() as usize * 1_000_000
+            + since_the_epoch.subsec_nanos() as usize / 1_000;
         Event {
             tid: unsafe { libc::syscall(libc::SYS_gettid) } as usize,
             timestamp,
@@ -71,15 +72,11 @@ pub struct Build {
 #[derive(Error, Debug)]
 enum BuildExecutionError {
     #[error("build exited with status: {code:?}")]
-    BuildExitedWithCode {
-        code: i32,
-    },
+    BuildExitedWithCode { code: i32 },
     #[error("build exited due to a signal")]
     BuildExitedWithSignal,
     #[error("directory '{directory:?}' has no parent directory")]
-    NoParentDirectory {
-        directory: String,
-    },
+    NoParentDirectory { directory: String },
     #[error("recorded data contains duplicate pid")]
     DuplicatePid,
     #[error("a process is missing from the recorded data")]
@@ -87,9 +84,7 @@ enum BuildExecutionError {
 }
 
 impl Build {
-    pub fn new(command: &str, processes: Vec<Process>)
-        -> Result<Build>
-    {
+    pub fn new(command: &str, processes: Vec<Process>) -> Result<Build> {
         Build::verify_integrity(&processes)?;
         Ok(Build {
             command: command.to_string(),
@@ -97,16 +92,12 @@ impl Build {
         })
     }
 
-    pub fn from_command(command: &str, tempdir: &Path)
-        -> Result<Build>
-    {
+    pub fn from_command(command: &str, tempdir: &Path) -> Result<Build> {
         let processes = Build::execute_command(command, tempdir)?;
         Build::new(command, processes)
     }
 
-    fn execute_command(command: &str, tempdir: &Path)
-        -> Result<Vec<Process>>
-    {
+    fn execute_command(command: &str, tempdir: &Path) -> Result<Vec<Process>> {
         let status = Build::execute_with_tracker(command, &tempdir)?;
         if !status.success() {
             if let Some(code) = status.code() {
@@ -119,14 +110,13 @@ impl Build {
         }
     }
 
-    fn execute_with_tracker(command: &str, tempdir: &Path)
-        -> Result<ExitStatus>
-    {
+    fn execute_with_tracker(command: &str, tempdir: &Path) -> Result<ExitStatus> {
         let executable_dir = fs::canonicalize(env::current_exe()?)?;
-        let preload_lib = executable_dir.parent()
+        let preload_lib = executable_dir
+            .parent()
             .map(|p| p.join("libpreload.so"))
             .ok_or(BuildExecutionError::NoParentDirectory {
-                directory: executable_dir.into_os_string().into_string().unwrap()
+                directory: executable_dir.into_os_string().into_string().unwrap(),
             })?;
         Ok(Command::new("/bin/bash")
             .env("LD_PRELOAD", preload_lib)
@@ -139,33 +129,24 @@ impl Build {
             .status)
     }
 
-    fn collect_processes(directory: &str)
-        -> Result<Vec<Process>>
-    {
+    fn collect_processes(directory: &str) -> Result<Vec<Process>> {
         let mut processes = vec![];
         let dir_iter = fs::read_dir(directory)?;
         for entry in dir_iter {
-            let contents : Process = serde_json::from_str(
-                &fs::read_to_string(entry?.path())?)?;
+            let contents: Process = serde_json::from_str(&fs::read_to_string(entry?.path())?)?;
             processes.push(contents);
         }
         Ok(processes)
     }
 
-
-    fn verify_integrity(processes: &Vec<Process>)
-        -> Result<()>
-    {
-        let pids : Vec<usize> = processes.iter()
-            .map(|process| process.pid)
-            .collect();
-        let unique_pids : HashMap<usize, ()> = pids.iter()
-            .map(|pid| (*pid, ()))
-            .collect();
+    fn verify_integrity(processes: &Vec<Process>) -> Result<()> {
+        let pids: Vec<usize> = processes.iter().map(|process| process.pid).collect();
+        let unique_pids: HashMap<usize, ()> = pids.iter().map(|pid| (*pid, ())).collect();
         if pids.len() != unique_pids.len() {
             return Err(BuildExecutionError::DuplicatePid)?;
         }
-        let parentless_count = processes.iter()
+        let parentless_count = processes
+            .iter()
             .map(|process| process.ppid)
             .map(|ppid| if pids.contains(&ppid) { 0 } else { 1 })
             .fold(0, |a, b| a + b);
@@ -181,9 +162,7 @@ impl Build {
 mod test {
     use super::*;
 
-    fn create_dummy_process(pid: usize, ppid: usize)
-        -> Process
-    {
+    fn create_dummy_process(pid: usize, ppid: usize) -> Process {
         Process {
             pid: pid,
             ppid: ppid,
@@ -202,9 +181,7 @@ mod test {
 
     #[test]
     fn test_build_integriy_single_process() {
-        let processes = vec![
-            create_dummy_process(1, 0),
-        ];
+        let processes = vec![create_dummy_process(1, 0)];
         assert!(Build::new("", processes).is_ok());
     }
 
