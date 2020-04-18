@@ -20,7 +20,7 @@ coverage:
 	@cargo test --no-run
 	@export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(shell rustc --print sysroot)/lib && \
 		for crate in $(CRATES); do \
-			test=$$(find target/debug -maxdepth 1 -executable -name "$$crate-*"); \
+			test=$$(find target/debug/deps -maxdepth 1 -executable -name "$$crate-*"); \
 			echo "Collecting coverage for" $$test "...";\
 			kcov target/cov/$$crate \
 				--include-pattern=$(SOURCE_DIR_PATTERNS) \
