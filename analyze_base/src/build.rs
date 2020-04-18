@@ -1,4 +1,4 @@
-use failure::Error;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap};
 use std::env;
@@ -6,6 +6,7 @@ use std::path::{Path};
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::fs;
 use std::process::{Command, ExitStatus, Stdio};
+use thiserror::Error;
 use libc;
 
 #[derive(Serialize, Deserialize)]
@@ -67,27 +68,27 @@ pub struct Build {
     pub processes: Vec<Process>,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Error, Debug)]
 enum BuildExecutionError {
-    #[fail(display = "build exited with status: {}", code)]
+    #[error("build exited with status: {code:?}")]
     BuildExitedWithCode {
         code: i32,
     },
-    #[fail(display = "build exited due to a signal")]
+    #[error("build exited due to a signal")]
     BuildExitedWithSignal,
-    #[fail(display = "directory '{}' has no parent directory", directory)]
+    #[error("directory '{directory:?}' has no parent directory")]
     NoParentDirectory {
         directory: String,
     },
-    #[fail(display = "recorded data contains duplicated pid")]
+    #[error("recorded data contains duplicate pid")]
     DuplicatePid,
-    #[fail(display = "a process is missing from the recorded data")]
+    #[error("a process is missing from the recorded data")]
     MissingProcess,
 }
 
 impl Build {
     pub fn new(command: &str, processes: Vec<Process>)
-        -> Result<Build, Error>
+        -> Result<Build>
     {
         Build::verify_integrity(&processes)?;
         Ok(Build {
@@ -97,14 +98,14 @@ impl Build {
     }
 
     pub fn from_command(command: &str, tempdir: &Path)
-        -> Result<Build, Error>
+        -> Result<Build>
     {
         let processes = Build::execute_command(command, tempdir)?;
         Build::new(command, processes)
     }
 
     fn execute_command(command: &str, tempdir: &Path)
-        -> Result<Vec<Process>, Error>
+        -> Result<Vec<Process>>
     {
         let status = Build::execute_with_tracker(command, &tempdir)?;
         if !status.success() {
@@ -119,7 +120,7 @@ impl Build {
     }
 
     fn execute_with_tracker(command: &str, tempdir: &Path)
-        -> Result<ExitStatus, Error>
+        -> Result<ExitStatus>
     {
         let executable_dir = fs::canonicalize(env::current_exe()?)?;
         let preload_lib = executable_dir.parent()
@@ -139,7 +140,7 @@ impl Build {
     }
 
     fn collect_processes(directory: &str)
-        -> Result<Vec<Process>, Error>
+        -> Result<Vec<Process>>
     {
         let mut processes = vec![];
         let dir_iter = fs::read_dir(directory)?;
@@ -153,7 +154,7 @@ impl Build {
 
 
     fn verify_integrity(processes: &Vec<Process>)
-        -> Result<(), Error>
+        -> Result<()>
     {
         let pids : Vec<usize> = processes.iter()
             .map(|process| process.pid)
@@ -169,9 +170,10 @@ impl Build {
             .map(|ppid| if pids.contains(&ppid) { 0 } else { 1 })
             .fold(0, |a, b| a + b);
         if parentless_count > 1 {
-            return Err(BuildExecutionError::MissingProcess)?;
+            Err(BuildExecutionError::MissingProcess)?
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 }
 

@@ -1,7 +1,5 @@
-extern crate failure;
-
 use analyze_base::build;
-use failure::Error;
+use anyhow::Result;
 use std::fs;
 use structopt::StructOpt;
 use tempfile::tempdir;
@@ -17,7 +15,7 @@ struct Config {
 }
 
 fn run(config: &Config)
-    -> Result<(), Error>
+    -> Result<()>
 {
     let dir = tempdir().unwrap();
     let build = build::Build::from_command(
@@ -31,18 +29,8 @@ fn run(config: &Config)
 }
 
 fn main()
+    -> Result<()>
 {
     let config = Config::from_args();
-    if let Err(ref e) = run(&config) {
-        println!("\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-        println!("Failed to track build:");
-        println!("error: {}", e);
-        for e in e.iter_causes() {
-            println!("caused by: {}", e);
-        }
-
-        println!("backtrace: {:?}", e.backtrace());
-
-        std::process::exit(1);
-    }
+    run(&config)
 }
